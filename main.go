@@ -2,12 +2,12 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -23,11 +23,8 @@ type Service struct {
 	Image string `yaml:"image"`
 }
 
-// Define a struct to match the JSON structure
-type Manifest struct {
-	Config struct {
-		Digest string `json:"digest"`
-	} `json:"config"`
+type ImageInspect struct {
+	ID string `json:"Id"`
 }
 
 func init() {
@@ -39,11 +36,9 @@ func readDockerCompose() (*DockerCompose, error) {
 	var data []byte
 	var err error
 
-	// Try reading docker-compose.yml
 	if _, err = os.Stat("docker-compose.yml"); err == nil {
 		data, err = os.ReadFile("docker-compose.yml")
 	} else if _, err = os.Stat("docker-compose.yaml"); err == nil {
-		// If docker-compose.yml doesn't exist, try docker-compose.yaml
 		data, err = os.ReadFile("docker-compose.yaml")
 	} else {
 		return nil, fmt.Errorf("no docker-compose.yml or docker-compose.yaml file found")
@@ -62,7 +57,7 @@ func readDockerCompose() (*DockerCompose, error) {
 	return &compose, nil
 }
 
-func getCurrentImageHash(image string) (string, error) {
+func getImageDigest(image string) (string, error) {
 	cmd := exec.Command("docker", "image", "inspect", "--format={{.Id}}", image)
 	output, err := cmd.Output()
 	if err != nil {
@@ -71,26 +66,31 @@ func getCurrentImageHash(image string) (string, error) {
 	if verbose {
 		log.Printf("Output of 'docker image inspect %s':\n%s", image, string(output))
 	}
-	return string(output), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
-func getLatestImageHash(image string) (string, error) {
-	cmd := exec.Command("docker", "manifest", "inspect", image)
+func getContainerDigest(containerName string) (string, error) {
+	cmd := exec.Command("docker", "container", "inspect", "--format={{.Image}}", containerName)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
 	if verbose {
-		log.Printf("Output of 'docker manifest inspect %s':\n%s", image, string(output))
+		log.Printf("Output of 'docker container inspect %s':\n%s", containerName, string(output))
 	}
+	return strings.TrimSpace(string(output)), nil
+}
 
-	var manifest Manifest
-	err = json.Unmarshal(output, &manifest)
+func getContainerName(serviceName string) (string, error) {
+	cmd := exec.Command("docker", "compose", "ps", "--format", "{{.Name}}", serviceName)
+	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
-
-	return manifest.Config.Digest, nil
+	if verbose {
+		log.Printf("Output of 'docker compose ps %s':\n%s", serviceName, string(output))
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 func runCommandAndLogOutput(name string, arg ...string) error {
@@ -110,7 +110,6 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// Log stdout
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
@@ -120,7 +119,6 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 		}
 	}()
 
-	// Log stderr
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
@@ -147,35 +145,46 @@ func updateImages() {
 	}
 
 	if verbose {
+		log.Println("Pulling latest images")
+	}
+	if err := runCommandAndLogOutput("docker", "compose", "pull"); err != nil {
+		log.Printf("Error running 'docker compose pull': %v", err)
+		return
+	}
+
+	if verbose {
 		log.Println("Checking for updates")
 	}
-	updateServices := true
+	updateServices := false
 	for serviceName, service := range compose.Services {
 		if verbose {
 			log.Printf("Checking service %s with image %s", serviceName, service.Image)
 		}
 
-		currentHash, err := getCurrentImageHash(service.Image)
+		latestDigest, err := getImageDigest(service.Image)
 		if err != nil {
-			log.Printf("Failed to get current image hash for %s: %v", service.Image, err)
+			log.Printf("Failed to get latest image digest for %s: %v", service.Image, err)
+			continue
+		}
+
+		containerName, err := getContainerName(serviceName)
+		if err != nil {
+			log.Printf("Failed to get container name for service %s: %v", serviceName, err)
+			continue
+		}
+
+		currentDigest, err := getContainerDigest(containerName)
+		if err != nil {
+			log.Printf("Failed to get current image digest for container %s: %v", containerName, err)
 			continue
 		}
 
 		if verbose {
-			log.Printf("Current image hash for %s: %s", service.Image, currentHash)
+			log.Printf("Latest image digest for %s: %s", service.Image, latestDigest)
+			log.Printf("Current image digest for %s: %s", containerName, currentDigest)
 		}
 
-		latestHash, err := getLatestImageHash(service.Image)
-		if err != nil {
-			log.Printf("Failed to get latest image hash for %s: %v", service.Image, err)
-			continue
-		}
-
-		if verbose {
-			log.Printf("Latest image hash for %s: %s", service.Image, latestHash)
-		}
-
-		if currentHash != latestHash {
+		if currentDigest != latestDigest {
 			updateServices = true
 			log.Printf("New image available for %s, will update.", serviceName)
 			break
@@ -185,17 +194,10 @@ func updateImages() {
 	if updateServices {
 		log.Println("Updating all services")
 
-		// Run docker compose down
 		if err := runCommandAndLogOutput("docker", "compose", "down"); err != nil {
 			log.Printf("Error running 'docker compose down': %v", err)
 		}
 
-		// Run docker compose pull
-		if err := runCommandAndLogOutput("docker", "compose", "pull"); err != nil {
-			log.Printf("Error running 'docker compose pull': %v", err)
-		}
-
-		// Run docker compose up -d
 		if err := runCommandAndLogOutput("docker", "compose", "up", "-d"); err != nil {
 			log.Printf("Error running 'docker compose up -d': %v", err)
 		}
