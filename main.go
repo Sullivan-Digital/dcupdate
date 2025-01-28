@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -25,8 +26,20 @@ type Manifest struct {
 	} `json:"config"`
 }
 
-func readDockerCompose(filePath string) (*DockerCompose, error) {
-	data, err := os.ReadFile(filePath)
+func readDockerCompose() (*DockerCompose, error) {
+	var data []byte
+	var err error
+
+	// Try reading docker-compose.yml
+	if _, err = os.Stat("docker-compose.yml"); err == nil {
+		data, err = os.ReadFile("docker-compose.yml")
+	} else if _, err = os.Stat("docker-compose.yaml"); err == nil {
+		// If docker-compose.yml doesn't exist, try docker-compose.yaml
+		data, err = os.ReadFile("docker-compose.yaml")
+	} else {
+		return nil, fmt.Errorf("no docker-compose.yml or docker-compose.yaml file found")
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +79,7 @@ func getLatestImageHash(image string) (string, error) {
 }
 
 func updateImages() {
-	compose, err := readDockerCompose("docker-compose.yml")
+	compose, err := readDockerCompose()
 	if err != nil {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
 	}
