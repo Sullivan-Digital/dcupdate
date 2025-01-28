@@ -197,6 +197,21 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 	return nil
 }
 
+func getServices(compose *DockerCompose, config *Config) []string {
+	services := []string{}
+	for serviceName := range compose.Services {
+		if config != nil && !shouldProcessService(serviceName, config) {
+			if verbose {
+				log.Printf("Skipping service %s", serviceName)
+			}
+			continue
+		}
+
+		services = append(services, serviceName)
+	}
+	return services
+}
+
 func updateImages() {
 	if verbose {
 		log.Println("Reading docker-compose file")
@@ -212,23 +227,27 @@ func updateImages() {
 		log.Fatalf("Failed to read config file: %v", err)
 	}
 
-	log.Println("Pulling latest images...")
-
-	if err := runCommandAndLogOutput("docker", "compose", "pull"); err != nil {
-		log.Printf("Error running 'docker compose pull': %v", err)
+	services := getServices(compose, config)
+	if len(services) == 0 {
+		log.Println("No services to process based on the configuration.")
 		return
 	}
 
-	log.Println("Comparing services for updates..")
+	log.Printf("Pulling latest images for %v services...", len(services))
+
+	// Pull only the specified services
+	args := []string{"compose", "pull"}
+	args = append(args, services...)
+	if err := runCommandAndLogOutput("docker", args...); err != nil {
+		log.Printf("Error running 'docker compose pull %v': %v", services, err)
+		return
+	}
+
+	log.Println("Comparing services for updates...")
 
 	updateServices := false
-	for serviceName, service := range compose.Services {
-		if config != nil && !shouldProcessService(serviceName, config) {
-			if verbose {
-				log.Printf("Skipping service %s", serviceName)
-			}
-			continue
-		}
+	for _, serviceName := range services {
+		service := compose.Services[serviceName]
 
 		updateThisService := false
 		if verbose {
