@@ -139,22 +139,21 @@ func updateImages() {
 	if verbose {
 		log.Println("Reading docker-compose file")
 	}
+
 	compose, err := readDockerCompose()
 	if err != nil {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
 	}
 
-	if verbose {
-		log.Println("Pulling latest images")
-	}
+	log.Println("Pulling latest images...")
+
 	if err := runCommandAndLogOutput("docker", "compose", "pull"); err != nil {
 		log.Printf("Error running 'docker compose pull': %v", err)
 		return
 	}
 
-	if verbose {
-		log.Println("Checking for updates")
-	}
+	log.Println("Comparing services for updates..")
+
 	updateServices := false
 	for serviceName, service := range compose.Services {
 		if verbose {
@@ -186,13 +185,17 @@ func updateImages() {
 
 		if currentDigest != latestDigest {
 			updateServices = true
-			log.Printf("New image available for %s, will update.", serviceName)
-			break
+		}
+
+		if updateServices {
+			log.Printf("%s: (!) update required", serviceName)
+		} else {
+			log.Printf("%s: up to date", serviceName)
 		}
 	}
 
 	if updateServices {
-		log.Println("Updating all services")
+		log.Println("Updating all services...")
 
 		if err := runCommandAndLogOutput("docker", "compose", "down"); err != nil {
 			log.Printf("Error running 'docker compose down': %v", err)
@@ -202,6 +205,8 @@ func updateImages() {
 			log.Printf("Error running 'docker compose up -d': %v", err)
 		}
 	}
+
+	log.Println("Done")
 }
 
 func main() {
