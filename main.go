@@ -79,6 +79,8 @@ func getLatestImageHash(image string) (string, error) {
 }
 
 func updateImages() {
+	log.Println("Checking for updates")
+	
 	compose, err := readDockerCompose()
 	if err != nil {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
