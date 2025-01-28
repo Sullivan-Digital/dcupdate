@@ -26,8 +26,9 @@ type Service struct {
 	Image string `yaml:"image"`
 }
 
-type ImageInspect struct {
-	ID string `json:"Id"`
+type Config struct {
+	Include []string `yaml:"include"`
+	Exclude []string `yaml:"exclude"`
 }
 
 func init() {
@@ -36,16 +37,23 @@ func init() {
 	flag.Parse()
 }
 
+func readOneOf(files ...string) ([]byte, error) {
+	for _, file := range files {
+		if _, err := os.Stat(file); err == nil {
+			return os.ReadFile("docker-compose.yml")
+		}
+	}
+
+	return nil, os.ErrNotExist
+}
+
 func readDockerCompose() (*DockerCompose, error) {
 	var data []byte
 	var err error
 
-	if _, err = os.Stat("docker-compose.yml"); err == nil {
-		data, err = os.ReadFile("docker-compose.yml")
-	} else if _, err = os.Stat("docker-compose.yaml"); err == nil {
-		data, err = os.ReadFile("docker-compose.yaml")
-	} else {
-		return nil, fmt.Errorf("no docker-compose.yml or docker-compose.yaml file found")
+	data, err = readOneOf("docker-compose.yml", "docker-compose.yaml")
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("no docker-compose file found")
 	}
 
 	if err != nil {
@@ -59,6 +67,50 @@ func readDockerCompose() (*DockerCompose, error) {
 	}
 
 	return &compose, nil
+}
+
+func readConfig() (*Config, error) {
+	var data []byte
+	var err error
+
+	data, err = readOneOf("docker-compose-updater.yml", "docker-compose-updater.yaml")
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func shouldProcessService(serviceName string, config *Config) bool {
+	if len(config.Exclude) > 0 {
+		for _, exclude := range config.Exclude {
+			if serviceName == exclude {
+				return false
+			}
+		}
+	}
+	
+	if len(config.Include) > 0 {
+		for _, include := range config.Include {
+			if serviceName == include {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return true
 }
 
 func getImageDigest(image string) (string, error) {
@@ -149,6 +201,11 @@ func updateImages() {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
 	}
 
+	config, err := readConfig()
+	if err != nil {
+		log.Fatalf("Failed to read config file: %v", err)
+	}
+
 	log.Println("Pulling latest images...")
 
 	if err := runCommandAndLogOutput("docker", "compose", "pull"); err != nil {
@@ -160,6 +217,13 @@ func updateImages() {
 
 	updateServices := false
 	for serviceName, service := range compose.Services {
+		if config != nil && !shouldProcessService(serviceName, config) {
+			if verbose {
+				log.Printf("Skipping service %s", serviceName)
+			}
+			continue
+		}
+
 		updateThisService := false
 		if verbose {
 			log.Printf("Checking service %s with image %s", serviceName, service.Image)
