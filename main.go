@@ -160,6 +160,7 @@ func updateImages() {
 
 	updateServices := false
 	for serviceName, service := range compose.Services {
+		updateThisService := false
 		if verbose {
 			log.Printf("Checking service %s with image %s", serviceName, service.Image)
 		}
@@ -189,9 +190,10 @@ func updateImages() {
 
 		if currentDigest != latestDigest {
 			updateServices = true
+			updateThisService = true
 		}
 
-		if updateServices {
+		if updateThisService {
 			log.Printf("%s: (!) update required", serviceName)
 		} else {
 			log.Printf("%s: up to date", serviceName)
