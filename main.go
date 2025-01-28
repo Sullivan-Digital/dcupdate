@@ -134,19 +134,19 @@ func updateImages() {
 
 		currentHash, err := getCurrentImageHash(service.Image)
 		if err != nil {
-			log.Printf("Failed to get current image hash for %s: %v", serviceName, err)
+			log.Printf("Failed to get current image hash for %s: %v", service.Image, err)
 			continue
 		}
 
-		log.Printf("Current image hash for %s: %s", serviceName, currentHash)
+		log.Printf("Current image hash for %s: %s", service.Image, currentHash)
 
 		latestHash, err := getLatestImageHash(service.Image)
 		if err != nil {
-			log.Printf("Failed to get latest image hash for %s: %v", serviceName, err)
+			log.Printf("Failed to get latest image hash for %s: %v", service.Image, err)
 			continue
 		}
 
-		log.Printf("Latest image hash for %s: %s", serviceName, latestHash)
+		log.Printf("Latest image hash for %s: %s", service.Image, latestHash)
 
 		if currentHash != latestHash {
 			updateServices = true
