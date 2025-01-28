@@ -120,26 +120,33 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 }
 
 func updateImages() {
-	log.Println("Checking for updates")
 
+	log.Println("Reading docker-compose file")
 	compose, err := readDockerCompose()
 	if err != nil {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
 	}
 
+	log.Println("Checking for updates")
 	updateServices := true
 	for serviceName, service := range compose.Services {
+		log.Printf("Checking service %s with image %s", serviceName, service.Image)
+
 		currentHash, err := getCurrentImageHash(service.Image)
 		if err != nil {
 			log.Printf("Failed to get current image hash for %s: %v", serviceName, err)
 			continue
 		}
 
+		log.Printf("Current image hash: %s", currentHash)
+
 		latestHash, err := getLatestImageHash(service.Image)
 		if err != nil {
 			log.Printf("Failed to get latest image hash for %s: %v", serviceName, err)
 			continue
 		}
+
+		log.Printf("Latest image hash: %s", latestHash)
 
 		if currentHash != latestHash {
 			updateServices = true
