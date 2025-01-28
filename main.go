@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	"gopkg.in/yaml.v2"
 )
+
+var verbose bool
 
 type DockerCompose struct {
 	Services map[string]Service `yaml:"services"`
@@ -25,6 +28,11 @@ type Manifest struct {
 	Config struct {
 		Digest string `json:"digest"`
 	} `json:"config"`
+}
+
+func init() {
+	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
+	flag.Parse()
 }
 
 func readDockerCompose() (*DockerCompose, error) {
@@ -60,6 +68,9 @@ func getCurrentImageHash(image string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if verbose {
+		log.Printf("Output of 'docker image inspect %s':\n%s", image, string(output))
+	}
 	return string(output), nil
 }
 
@@ -68,6 +79,9 @@ func getLatestImageHash(image string) (string, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
+	}
+	if verbose {
+		log.Printf("Output of 'docker manifest inspect %s':\n%s", image, string(output))
 	}
 
 	var manifest Manifest
@@ -100,7 +114,9 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			log.Printf("[stdout] %s", scanner.Text())
+			if verbose {
+				log.Printf("[stdout] %s", scanner.Text())
+			}
 		}
 	}()
 
@@ -108,7 +124,9 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			log.Printf("[stderr] %s", scanner.Text())
+			if verbose {
+				log.Printf("[stderr] %s", scanner.Text())
+			}
 		}
 	}()
 
@@ -120,17 +138,22 @@ func runCommandAndLogOutput(name string, arg ...string) error {
 }
 
 func updateImages() {
-
-	log.Println("Reading docker-compose file")
+	if verbose {
+		log.Println("Reading docker-compose file")
+	}
 	compose, err := readDockerCompose()
 	if err != nil {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
 	}
 
-	log.Println("Checking for updates")
+	if verbose {
+		log.Println("Checking for updates")
+	}
 	updateServices := true
 	for serviceName, service := range compose.Services {
-		log.Printf("Checking service %s with image %s", serviceName, service.Image)
+		if verbose {
+			log.Printf("Checking service %s with image %s", serviceName, service.Image)
+		}
 
 		currentHash, err := getCurrentImageHash(service.Image)
 		if err != nil {
@@ -138,7 +161,9 @@ func updateImages() {
 			continue
 		}
 
-		log.Printf("Current image hash for %s: %s", service.Image, currentHash)
+		if verbose {
+			log.Printf("Current image hash for %s: %s", service.Image, currentHash)
+		}
 
 		latestHash, err := getLatestImageHash(service.Image)
 		if err != nil {
@@ -146,7 +171,9 @@ func updateImages() {
 			continue
 		}
 
-		log.Printf("Latest image hash for %s: %s", service.Image, latestHash)
+		if verbose {
+			log.Printf("Latest image hash for %s: %s", service.Image, latestHash)
+		}
 
 		if currentHash != latestHash {
 			updateServices = true
