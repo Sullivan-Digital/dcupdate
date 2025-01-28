@@ -13,7 +13,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var verbose bool
+var (
+	verbose bool
+	daemon  bool
+)
 
 type DockerCompose struct {
 	Services map[string]Service `yaml:"services"`
@@ -29,6 +32,7 @@ type ImageInspect struct {
 
 func init() {
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
+	flag.BoolVar(&daemon, "daemon", false, "Run as a daemon")
 	flag.Parse()
 }
 
@@ -210,8 +214,13 @@ func updateImages() {
 }
 
 func main() {
-	for {
+	if daemon {
+		for {
+			updateImages()
+			log.Println("Sleeping for 5 minutes...")
+			time.Sleep(5 * time.Minute)
+		}
+	} else {
 		updateImages()
-		time.Sleep(5 * time.Minute)
 	}
 }
