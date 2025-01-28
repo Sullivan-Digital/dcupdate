@@ -55,7 +55,7 @@ func readDockerCompose() (*DockerCompose, error) {
 }
 
 func getCurrentImageHash(image string) (string, error) {
-	cmd := exec.Command("docker", "image", "inspect", "--format='{{.Id}}'", image)
+	cmd := exec.Command("docker", "image", "inspect", "--format={{.Id}}", image)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -138,7 +138,7 @@ func updateImages() {
 			continue
 		}
 
-		log.Printf("Current image hash: %s", currentHash)
+		log.Printf("Current image hash for %s: %s", serviceName, currentHash)
 
 		latestHash, err := getLatestImageHash(service.Image)
 		if err != nil {
@@ -146,7 +146,7 @@ func updateImages() {
 			continue
 		}
 
-		log.Printf("Latest image hash: %s", latestHash)
+		log.Printf("Latest image hash for %s: %s", serviceName, latestHash)
 
 		if currentHash != latestHash {
 			updateServices = true
