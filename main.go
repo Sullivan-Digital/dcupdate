@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	verbose bool
-	daemon  bool
+	verbose    bool
+	daemon     bool
+	configFile string
 )
 
 type DockerCompose struct {
@@ -34,13 +35,14 @@ type Config struct {
 func init() {
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 	flag.BoolVar(&daemon, "daemon", false, "Run as a daemon")
+	flag.StringVar(&configFile, "config", "", "Specify the config file to use")
 	flag.Parse()
 }
 
 func readOneOf(files ...string) ([]byte, error) {
 	for _, file := range files {
 		if _, err := os.Stat(file); err == nil {
-			return os.ReadFile("docker-compose.yml")
+			return os.ReadFile(file)
 		}
 	}
 
@@ -48,10 +50,7 @@ func readOneOf(files ...string) ([]byte, error) {
 }
 
 func readDockerCompose() (*DockerCompose, error) {
-	var data []byte
-	var err error
-
-	data, err = readOneOf("docker-compose.yml", "docker-compose.yaml")
+	data, err := readOneOf("docker-compose.yml", "docker-compose.yaml")
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("no docker-compose file found")
 	}
@@ -73,9 +72,16 @@ func readConfig() (*Config, error) {
 	var data []byte
 	var err error
 
-	data, err = readOneOf("docker-compose-updater.yml", "docker-compose-updater.yaml")
-	if os.IsNotExist(err) {
-		return nil, nil
+	if configFile != "" {
+		data, err = os.ReadFile(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read specified config file: %v", err)
+		}
+	} else {
+		data, err = readOneOf("docker-compose-updater.yml", "docker-compose-updater.yaml")
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 	}
 
 	if err != nil {
@@ -99,7 +105,7 @@ func shouldProcessService(serviceName string, config *Config) bool {
 			}
 		}
 	}
-	
+
 	if len(config.Include) > 0 {
 		for _, include := range config.Include {
 			if serviceName == include {
