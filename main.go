@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -78,9 +79,49 @@ func getLatestImageHash(image string) (string, error) {
 	return manifest.Config.Digest, nil
 }
 
+func runCommandAndLogOutput(name string, arg ...string) error {
+	cmd := exec.Command(name, arg...)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// Log stdout
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			log.Printf("[stdout] %s", scanner.Text())
+		}
+	}()
+
+	// Log stderr
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			log.Printf("[stderr] %s", scanner.Text())
+		}
+	}()
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("command execution failed: %w", err)
+	}
+
+	return nil
+}
+
 func updateImages() {
 	log.Println("Checking for updates")
-	
+
 	compose, err := readDockerCompose()
 	if err != nil {
 		log.Fatalf("Failed to read docker-compose file: %v", err)
@@ -109,9 +150,21 @@ func updateImages() {
 
 	if updateServices {
 		log.Println("Updating all services")
-		exec.Command("docker", "compose", "down").Run()
-		exec.Command("docker", "compose", "pull").Run()
-		exec.Command("docker", "compose", "up", "-d").Run()
+
+		// Run docker compose down
+		if err := runCommandAndLogOutput("docker", "compose", "down"); err != nil {
+			log.Printf("Error running 'docker compose down': %v", err)
+		}
+
+		// Run docker compose pull
+		if err := runCommandAndLogOutput("docker", "compose", "pull"); err != nil {
+			log.Printf("Error running 'docker compose pull': %v", err)
+		}
+
+		// Run docker compose up -d
+		if err := runCommandAndLogOutput("docker", "compose", "up", "-d"); err != nil {
+			log.Printf("Error running 'docker compose up -d': %v", err)
+		}
 	}
 }
 
