@@ -48,6 +48,7 @@ func initConfig() {
 }
 
 func handleUpdate(w http.ResponseWriter, r *http.Request) {
+	log.Println("Received a request to update images")
 	if r.Method == http.MethodPost {
 		updateImages(config)
 		w.WriteHeader(http.StatusOK)
