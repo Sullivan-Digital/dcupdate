@@ -86,6 +86,8 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if config.SecretKey != "" {
+			log.Println("Verifying HMAC signature...")
+
 			signature := r.Header.Get("X-Nexus-Webhook-Signature")
 			if signature == "" {
 				log.Println("Missing X-Nexus-Webhook-Signature header")
@@ -100,6 +102,8 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
+		} else {
+			log.Println("No secret key configured, skipping HMAC verification")
 		}
 
 		updateMutex.Lock()
