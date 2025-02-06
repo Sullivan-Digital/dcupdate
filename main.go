@@ -13,12 +13,14 @@ import (
 type Config struct {
 	Include []string `mapstructure:"include"`
 	Exclude []string `mapstructure:"exclude"`
+	Sleep   int      `mapstructure:"sleep"`
 }
 
 var (
 	verbose    bool
 	configFile string
 	config     *Config
+	sleepTime  int
 )
 
 func initConfig() {
@@ -30,13 +32,14 @@ func initConfig() {
 		viper.AddConfigPath(".")
 	}
 
-	var tmpConfig Config
-	err := viper.Unmarshal(&tmpConfig)
-	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-		return
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Fatalf("Error reading config file: %v", err)
+		}
 	}
 
-	if err != nil {
+	var tmpConfig Config
+	if err := viper.Unmarshal(&tmpConfig); err != nil {
 		log.Fatalf("unable to decode into config struct, %v", err)
 	}
 
@@ -60,12 +63,15 @@ func main() {
 		Short: "Run the updater",
 		Run: func(cmd *cobra.Command, args []string) {
 			daemon, _ := cmd.Flags().GetBool("daemon")
+			if sleepTime == 0 {
+				sleepTime = config.Sleep
+			}
 
 			if daemon {
 				for {
 					updateImages(config)
-					log.Println("Sleeping for 5 minutes...")
-					time.Sleep(5 * time.Minute)
+					log.Printf("Sleeping for %d seconds...", sleepTime)
+					time.Sleep(time.Duration(sleepTime) * time.Second)
 				}
 			} else {
 				updateImages(config)
@@ -74,6 +80,7 @@ func main() {
 	}
 
 	runCmd.Flags().Bool("daemon", false, "Run as a daemon")
+	runCmd.Flags().IntVarP(&sleepTime, "sleep", "s", 0, "Set the sleep time in minutes for the daemon")
 
 	rootCmd.AddCommand(runCmd)
 
