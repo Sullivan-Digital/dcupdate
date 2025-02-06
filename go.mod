@@ -1,4 +1,4 @@
-module docker-compose-updater
+module dcupdate
 
 go 1.21.5
 
