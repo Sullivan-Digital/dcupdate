@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -46,6 +47,16 @@ func initConfig() {
 	config = &tmpConfig
 }
 
+func handleUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		updateImages(config)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Images updated"))
+	} else {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "dcupdate",
@@ -58,31 +69,49 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "Specify the config file to use")
 
-	var runCmd = &cobra.Command{
-		Use:   "run",
-		Short: "Run the updater",
+	var updateCmd = &cobra.Command{
+		Use:   "update",
+		Short: "Update the images",
 		Run: func(cmd *cobra.Command, args []string) {
-			daemon, _ := cmd.Flags().GetBool("daemon")
-			if sleepTime == 0 {
-				sleepTime = config.Sleep
-			}
+			updateImages(config)
+		},
+	}
 
-			if daemon {
-				for {
-					updateImages(config)
-					log.Printf("Sleeping for %d seconds...", sleepTime)
-					time.Sleep(time.Duration(sleepTime) * time.Second)
-				}
-			} else {
-				updateImages(config)
+	var listenCmd = &cobra.Command{
+		Use:   "listen [port]",
+		Short: "Listen for update requests",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			listenPort := args[0]
+
+			http.HandleFunc("/update", handleUpdate)
+			log.Printf("Listening on port %s for update requests...", listenPort)
+			if err := http.ListenAndServe(":"+listenPort, nil); err != nil {
+				log.Fatalf("Failed to start HTTP server: %v", err)
 			}
 		},
 	}
 
-	runCmd.Flags().Bool("daemon", false, "Run as a daemon")
-	runCmd.Flags().IntVarP(&sleepTime, "sleep", "s", 0, "Set the sleep time in minutes for the daemon")
+	var daemonCmd = &cobra.Command{
+		Use:   "daemon",
+		Short: "Run the updater",
+		Run: func(cmd *cobra.Command, args []string) {
+			if sleepTime == 0 {
+				sleepTime = config.Sleep
+			}
 
-	rootCmd.AddCommand(runCmd)
+			for {
+				updateImages(config)
+				time.Sleep(time.Duration(sleepTime) * time.Second)
+			}
+		},
+	}
+
+	daemonCmd.Flags().IntVarP(&sleepTime, "sleep", "s", 0, "Set the sleep time in seconds for the daemon")
+
+	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(listenCmd)
+	rootCmd.AddCommand(daemonCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
