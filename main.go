@@ -71,7 +71,12 @@ func verifyHMAC(body []byte, signature string, secretKey string) bool {
 }
 
 func handleUpdate(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request from %s to %s", r.RemoteAddr, r.URL.String())
+	remoteAddr := r.RemoteAddr
+	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+		log.Printf("Received request from %s (forwarded for %s) to %s", remoteAddr, forwardedFor, r.URL.String())
+	} else {
+		log.Printf("Received request from %s to %s", remoteAddr, r.URL.String())
+	}
 	if verbose {
 		log.Printf("Request headers:")
 		for name, values := range r.Header {
