@@ -18,10 +18,10 @@ import (
 )
 
 type Config struct {
-	Include   []string `mapstructure:"include"`
-	Exclude   []string `mapstructure:"exclude"`
-	Sleep     int      `mapstructure:"sleep"`
-	Nexus     NexusConfig `mapstructure:"nexus"`
+	Include []string    `mapstructure:"include"`
+	Exclude []string    `mapstructure:"exclude"`
+	Sleep   int         `mapstructure:"sleep"`
+	Nexus   NexusConfig `mapstructure:"nexus"`
 }
 
 type NexusConfig struct {
@@ -106,6 +106,8 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
+
+			log.Println("HMAC signature accepted")
 		} else {
 			log.Println("No secret key configured, skipping HMAC verification")
 		}
