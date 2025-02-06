@@ -21,7 +21,11 @@ type Config struct {
 	Include   []string `mapstructure:"include"`
 	Exclude   []string `mapstructure:"exclude"`
 	Sleep     int      `mapstructure:"sleep"`
-	SecretKey string   `mapstructure:"nexus.secret_key"`
+	Nexus     NexusConfig `mapstructure:"nexus"`
+}
+
+type NexusConfig struct {
+	SecretKey string `mapstructure:"secret_key"`
 }
 
 var (
@@ -85,7 +89,7 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if config.SecretKey != "" {
+		if config.Nexus.SecretKey != "" {
 			log.Println("Verifying HMAC signature...")
 
 			signature := r.Header.Get("X-Nexus-Webhook-Signature")
@@ -97,7 +101,7 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 			// Remove whitespace from JSON body
 			bodyStr := strings.ReplaceAll(string(body), " ", "")
-			if !verifyHMAC([]byte(bodyStr), signature, config.SecretKey) {
+			if !verifyHMAC([]byte(bodyStr), signature, config.Nexus.SecretKey) {
 				log.Println("Invalid HMAC signature")
 				w.WriteHeader(http.StatusUnauthorized)
 				return
