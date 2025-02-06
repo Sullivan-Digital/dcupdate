@@ -25,7 +25,7 @@ func initConfig() {
 	if configFile != "" {
 		viper.SetConfigFile(configFile)
 	} else {
-		viper.SetConfigName("docker-compose-updater")
+		viper.SetConfigName("dcupdate")
 		viper.SetConfigType("yaml")
 		viper.AddConfigPath(".")
 	}
@@ -45,7 +45,7 @@ func initConfig() {
 
 func main() {
 	var rootCmd = &cobra.Command{
-		Use:   "docker-compose-updater",
+		Use:   "dcupdate",
 		Short: "Docker Compose Updater",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			initConfig()
