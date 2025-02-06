@@ -1,11 +1,15 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,9 +18,10 @@ import (
 )
 
 type Config struct {
-	Include []string `mapstructure:"include"`
-	Exclude []string `mapstructure:"exclude"`
-	Sleep   int      `mapstructure:"sleep"`
+	Include   []string `mapstructure:"include"`
+	Exclude   []string `mapstructure:"exclude"`
+	Sleep     int      `mapstructure:"sleep"`
+	SecretKey string   `mapstructure:"nexus.secret_key"`
 }
 
 var (
@@ -53,8 +58,15 @@ func initConfig() {
 	config = &tmpConfig
 }
 
+func verifyHMAC(body []byte, signature string, secretKey string) bool {
+	mac := hmac.New(sha1.New, []byte(secretKey))
+	mac.Write(body)
+	expectedMAC := mac.Sum(nil)
+	expectedSignature := hex.EncodeToString(expectedMAC)
+	return hmac.Equal([]byte(signature), []byte(expectedSignature))
+}
+
 func handleUpdate(w http.ResponseWriter, r *http.Request) {
-	
 	log.Printf("Received request from %s to %s", r.RemoteAddr, r.URL.String())
 	if verbose {
 		log.Printf("Request headers:")
@@ -63,16 +75,33 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 				log.Printf("  %s: %s", name, value)
 			}
 		}
-
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Printf("Error reading request body: %v", err)
-		} else {
-			log.Printf("Request body: %s", string(body))
-		}
 	}
 
 	if r.Method == http.MethodPost {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		if config.SecretKey != "" {
+			signature := r.Header.Get("X-Nexus-Webhook-Signature")
+			if signature == "" {
+				log.Println("Missing X-Nexus-Webhook-Signature header")
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			// Remove whitespace from JSON body
+			bodyStr := strings.ReplaceAll(string(body), " ", "")
+			if !verifyHMAC([]byte(bodyStr), signature, config.SecretKey) {
+				log.Println("Invalid HMAC signature")
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+		}
+
 		updateMutex.Lock()
 		updateFlag = true
 		updateCond.Signal()
