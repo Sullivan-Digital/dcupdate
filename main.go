@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -53,7 +54,24 @@ func initConfig() {
 }
 
 func handleUpdate(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received a request to update images")
+	
+	log.Printf("Received request from %s to %s", r.RemoteAddr, r.URL.String())
+	if verbose {
+		log.Printf("Request headers:")
+		for name, values := range r.Header {
+			for _, value := range values {
+				log.Printf("  %s: %s", name, value)
+			}
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("Error reading request body: %v", err)
+		} else {
+			log.Printf("Request body: %s", string(body))
+		}
+	}
+
 	if r.Method == http.MethodPost {
 		updateMutex.Lock()
 		updateFlag = true
