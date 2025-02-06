@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,6 +23,10 @@ var (
 	configFile string
 	config     *Config
 	sleepTime  int
+
+	updateMutex sync.Mutex
+	updateCond  *sync.Cond
+	updateFlag  bool
 )
 
 func initConfig() {
@@ -50,15 +55,33 @@ func initConfig() {
 func handleUpdate(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received a request to update images")
 	if r.Method == http.MethodPost {
-		updateImages(config)
+		updateMutex.Lock()
+		updateFlag = true
+		updateCond.Signal()
+		updateMutex.Unlock()
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Images updated"))
+		w.Write([]byte("Update request received"))
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
+func updateImagesLoop() {
+	for {
+		updateMutex.Lock()
+		for !updateFlag {
+			updateCond.Wait()
+		}
+		updateFlag = false
+		updateMutex.Unlock()
+
+		updateImages(config)
+	}
+}
+
 func main() {
+	updateCond = sync.NewCond(&updateMutex)
+
 	var rootCmd = &cobra.Command{
 		Use:   "dcupdate",
 		Short: "Docker Compose Updater",
@@ -86,6 +109,7 @@ func main() {
 			listenPort := args[0]
 
 			http.HandleFunc("/update", handleUpdate)
+			go updateImagesLoop()
 			log.Printf("Listening on port %s for update requests...", listenPort)
 			if err := http.ListenAndServe(":"+listenPort, nil); err != nil {
 				log.Fatalf("Failed to start HTTP server: %v", err)
